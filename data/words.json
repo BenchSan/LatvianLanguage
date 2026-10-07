@@ -1,0 +1,21 @@
+[
+  {"id":"b1-iela","lv":"iela","ru":"улица","read":"Иэла","block":1,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"ie = иэ одним слогом"},
+  {"id":"b1-riga","lv":"Rīga","ru":"Рига","read":"РИИга","block":1,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"ī - долгое и"},
+  {"id":"b1-sokolade","lv":"šokolāde","ru":"шоколад","read":"ШОколааде","block":1,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"заимствованное слово, o = о"},
+  {"id":"b1-kirsis","lv":"ķirsis","ru":"вишня","read":"КЬИрсис","block":1,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"ķ = мягкое к"},
+  {"id":"b1-sarkans","lv":"sarkans","ru":"красный","read":"САРканс","block":1,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"Sarkandaugava = Красная Даугава"},
+  {"id":"b2l1-sveiki","lv":"sveiki","ru":"привет","read":"СВЕЙки","block":2,"lesson":1,"lv_alt":[],"ru_alt":["здравствуйте"],"note":"друзьям и знакомым"},
+  {"id":"b2l1-cau","lv":"čau","ru":"привет (неформально)","read":"ЧАу","block":2,"lesson":1,"lv_alt":[],"ru_alt":["пока","привет"],"note":"как итальянское ciao, и привет, и пока"},
+  {"id":"b2l1-labrit","lv":"labrīt","ru":"доброе утро","read":"ЛАБриит","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"lab- = добрый, rīts = утро"},
+  {"id":"b2l1-labdien","lv":"labdien","ru":"добрый день","read":"ЛАБдиэн","block":2,"lesson":1,"lv_alt":[],"ru_alt":["здравствуйте"],"note":"универсальное приветствие днём"},
+  {"id":"b2l1-labvakar","lv":"labvakar","ru":"добрый вечер","read":"ЛАБвакар","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"vakars = вечер"},
+  {"id":"b2l1-paldies","lv":"paldies","ru":"спасибо","read":"ПАЛдиэс","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":""},
+  {"id":"b2l1-ludzu","lv":"lūdzu","ru":"пожалуйста","read":"ЛУУдзу","block":2,"lesson":1,"lv_alt":[],"ru_alt":["вот, держите","не за что"],"note":"как украинское \"будь ласка\""},
+  {"id":"b2l1-atvainojiet","lv":"atvainojiet","ru":"извините","read":"АТвайноиэт","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"-iet = как \"-ите\""},
+  {"id":"b2l1-atvaino","lv":"atvaino","ru":"извини","read":"АТвайно","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"неформально"},
+  {"id":"b2l1-ja","lv":"jā","ru":"да","read":"ЙАА","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":""},
+  {"id":"b2l1-ne","lv":"nē","ru":"нет","read":"НЭЭ","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":""},
+  {"id":"b2l1-nesaprotu","lv":"es nesaprotu","ru":"я не понимаю","read":"эс НЕсапроту","block":2,"lesson":1,"lv_alt":["nesaprotu"],"ru_alt":["не понимаю"],"note":"ne- пишется слитно с глаголом"},
+  {"id":"b2l1-uzredzesanos","lv":"uz redzēšanos","ru":"до свидания","read":"уз РЕдзээшанос","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"дословно \"до видения\", redzēt = видеть"},
+  {"id":"b2l1-ata","lv":"atā","ru":"пока","read":"Атаа","block":2,"lesson":1,"lv_alt":[],"ru_alt":[],"note":"неформально"}
+]
