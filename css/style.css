@@ -91,6 +91,7 @@ body {
 h3 { margin: 24px 0 10px; font-size: 1.05rem; }
 
 .muted { color: var(--muted); font-size: .9rem; }
+.app a:not(.btn):not(.tile):not(.list-item) { color: var(--accent); }
 .small-text { font-size: .82rem; }
 .center { text-align: center; }
 
@@ -384,6 +385,75 @@ body.has-tts .tts-btn, body.has-stt .stt-btn { display: inline-flex !important; 
 .err-types .feedback { margin-top: 0; }
 
 #report-text { font-size: .8rem; }
+
+/* ---------- размер сессии ---------- */
+
+.size-row { display: flex; gap: 8px; }
+.size-row .seg { flex: 2; }
+.size-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+}
+.size-input.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.size-input.invalid { border-color: var(--bad); background: var(--bad-bg); }
+
+.tiles.three { grid-template-columns: repeat(3, 1fr); }
+.tiles.three .tile { padding: 12px 8px; text-align: center; align-items: center; }
+.tiles.three .tile-title { font-size: .95rem; }
+
+/* ---------- формы и грамматика ---------- */
+
+.prompt.drill { font-size: 1.5rem; }
+
+.rule {
+  margin: 10px 0 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+}
+.table-wrap { margin-top: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gtable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 1rem;
+}
+.gtable th, .gtable td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.gtable th { color: var(--muted); font-size: .85rem; font-weight: 600; }
+.gtable tbody tr:last-child td { border-bottom: 0; }
+.gtable td:not(:first-child) { font-weight: 600; }
+
+.examples, .dict { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.examples li, .dict-row {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ex-lv { font-weight: 600; font-size: 1.05rem; }
+.examples .btn { margin-top: 6px; }
+
+/* ---------- словарь ---------- */
+
+.dict-controls { display: flex; flex-direction: column; gap: 8px; }
+.dict-controls .answer { margin-top: 0; font-size: 1.05rem; }
+.dict-row > * + * { margin-top: 2px; }
+.dict-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dict-head .lv { font-weight: 700; font-size: 1.1rem; }
+.dict-head .btn { min-height: 40px; padding: 4px 12px; }
 
 @media (max-width: 360px) {
   body { font-size: 16px; }

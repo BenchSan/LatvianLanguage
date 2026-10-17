@@ -5,6 +5,7 @@
   const KEYS = {
     words: 'lv.importedWords',
     texts: 'lv.importedTexts',
+    grammar: 'lv.importedGrammar',
     progress: 'lv.progress',
     days: 'lv.days',
     textResults: 'lv.textResults',
@@ -36,16 +37,24 @@
   const state = {
     baseWords: [],
     baseTexts: [],
+    baseGrammar: [],
     baseError: null,
     importedWords: load(KEYS.words, []),
     importedTexts: load(KEYS.texts, []),
+    importedGrammar: load(KEYS.grammar, []),
     progress: load(KEYS.progress, {}),
     days: load(KEYS.days, []),
     textResults: load(KEYS.textResults, {}),
     log: load(KEYS.log, []),
     statsFrom: load(KEYS.statsFrom, null),
-    settings: Object.assign({ filter: 'all', size: 10, period: 'week' }, load(KEYS.settings, {}))
+    settings: Object.assign({ filter: 'all', size: 10, period: 'week', dictBlock: 'all' }, load(KEYS.settings, {}))
   };
+  if (!isSessionSize(state.settings.size)) state.settings.size = 10;
+
+  // Размер сессии — любое целое от 1. Если слов в пуле меньше — проходим все по разу.
+  function isSessionSize(n) {
+    return Number.isInteger(n) && n >= 1;
+  }
 
   // ---------- нормализация записей ----------
 
@@ -104,6 +113,47 @@
     };
   }
 
+  // Задания без своего id получают `<id карточки>#<номер>` — по нему ведутся ящики и журнал.
+  function normalizeGrammar(g) {
+    if (!g || typeof g !== 'object') throw new Error('не объект');
+    if (!g.id) throw new Error('нет id');
+    if (!g.title) throw new Error(`${g.id}: нет title`);
+    const id = String(g.id);
+    const t = g.table && typeof g.table === 'object' ? g.table : null;
+    const cell = (c) => (c == null ? '' : String(c));
+    const table = t && Array.isArray(t.rows) && t.rows.length ? {
+      headers: Array.isArray(t.headers) ? t.headers.map(cell) : [],
+      rows: t.rows.map((r) => (Array.isArray(r) ? r.map(cell) : [cell(r)]))
+    } : null;
+    const drills = (Array.isArray(g.drills) ? g.drills : []).map((d, i) => {
+      if (!d || !d.q || d.a == null || d.a === '') throw new Error(`${id}: задание ${i + 1} без q или a`);
+      return {
+        id: d.id ? String(d.id) : `${id}#${i + 1}`,
+        q: String(d.q),
+        a: String(d.a),
+        alt: asList(d.alt)
+      };
+    });
+    return {
+      id,
+      block: asNum(g.block),
+      lesson: asNum(g.lesson),
+      title: String(g.title),
+      rule: g.rule ? String(g.rule) : '',
+      table,
+      examples: (Array.isArray(g.examples) ? g.examples : [])
+        .filter((x) => x && x.lv)
+        .map((x) => ({ lv: String(x.lv), ru: x.ru ? String(x.ru) : '' })),
+      drills
+    };
+  }
+
+  // У грамматики тоже есть title, поэтому её проверяем раньше текстов.
+  function isGrammarLike(item) {
+    return item && typeof item === 'object' &&
+      ('rule' in item || 'drills' in item || 'table' in item || 'examples' in item);
+  }
+
   function isTextLike(item) {
     return item && typeof item === 'object' &&
       ('title' in item || 'glossary' in item || 'questions' in item);
@@ -117,24 +167,30 @@
     return res.json();
   }
 
-  function setBase(words, texts) {
+  function setBase(words, texts, grammar) {
     state.baseWords = [];
     state.baseTexts = [];
+    state.baseGrammar = [];
     (words || []).forEach((w) => {
       try { state.baseWords.push(normalizeWord(w)); } catch (e) { console.warn('words.json:', e.message); }
     });
     (texts || []).forEach((t) => {
       try { state.baseTexts.push(normalizeText(t)); } catch (e) { console.warn('texts.json:', e.message); }
     });
+    (grammar || []).forEach((g) => {
+      try { state.baseGrammar.push(normalizeGrammar(g)); } catch (e) { console.warn('grammar.json:', e.message); }
+    });
   }
 
   async function loadBase() {
     try {
-      const [words, texts] = await Promise.all([
+      // Без grammar.json всё работает как раньше, просто без грамматики.
+      const [words, texts, grammar] = await Promise.all([
         fetchJson('data/words.json'),
-        fetchJson('data/texts.json')
+        fetchJson('data/texts.json'),
+        fetchJson('data/grammar.json').catch((e) => { console.warn(e.message); return []; })
       ]);
-      setBase(words, texts);
+      setBase(words, texts, grammar);
       state.baseError = null;
     } catch (e) {
       state.baseError = e.message || String(e);
@@ -145,12 +201,18 @@
   function loadBaseFromFiles(parsedFiles) {
     let words = [];
     let texts = [];
+    let grammar = [];
     parsedFiles.forEach((arr) => {
       if (!Array.isArray(arr)) return;
-      if (arr.some(isTextLike)) texts = texts.concat(arr);
+      if (arr.some(isGrammarLike)) grammar = grammar.concat(arr);
+      else if (arr.some(isTextLike)) texts = texts.concat(arr);
       else words = words.concat(arr);
     });
-    setBase(words.length ? words : state.baseWords, texts.length ? texts : state.baseTexts);
+    setBase(
+      words.length ? words : state.baseWords,
+      texts.length ? texts : state.baseTexts,
+      grammar.length ? grammar : state.baseGrammar
+    );
     state.baseError = null;
   }
 
@@ -163,6 +225,16 @@
 
   function words() { return mergeById(state.baseWords, state.importedWords); }
   function texts() { return mergeById(state.baseTexts, state.importedTexts); }
+  function grammar() { return mergeById(state.baseGrammar, state.importedGrammar); }
+
+  // Задания из всех карточек; блок и урок берутся от карточки.
+  function drills() {
+    const out = [];
+    grammar().forEach((g) => g.drills.forEach((d) => out.push(Object.assign({}, d, {
+      block: g.block, lesson: g.lesson, gid: g.id, title: g.title
+    }))));
+    return out;
+  }
 
   // ---------- фильтр блок/урок ----------
 
@@ -176,6 +248,11 @@
     });
     texts().forEach((t) => {
       if (t.block != null && !blocks.has(t.block)) blocks.set(t.block, new Set());
+    });
+    grammar().forEach((g) => {
+      if (g.block == null) return;
+      if (!blocks.has(g.block)) blocks.set(g.block, new Set());
+      if (g.lesson != null) blocks.get(g.block).add(g.lesson);
     });
     const opts = [{ value: 'all', label: 'Всё пройденное' }];
     Array.from(blocks.keys()).sort((a, b) => a - b).forEach((b) => {
@@ -197,6 +274,12 @@
     const { block, lesson } = parseFilter(state.settings.filter);
     return words().filter((w) =>
       (block == null || w.block === block) && (lesson == null || w.lesson === lesson));
+  }
+
+  function filteredDrills() {
+    const { block, lesson } = parseFilter(state.settings.filter);
+    return drills().filter((d) =>
+      (block == null || d.block === block) && (lesson == null || d.lesson === lesson));
   }
 
   function filteredTexts() {
@@ -249,17 +332,22 @@
     });
   }
 
-  function wordsById() {
-    return new Map(words().map((w) => [w.id, w]));
+  // Слова и задания «Форм» в одном справочнике — для статистики и отчёта.
+  function itemsById() {
+    const map = new Map(words().map((w) => [w.id, w]));
+    drills().forEach((d) => map.set(d.id, {
+      id: d.id, lv: d.a, ru: d.q, block: d.block, lesson: d.lesson, kind: 'drill'
+    }));
+    return map;
   }
 
   function summary(period) {
     const range = Stats.periodRange(period, Date.now(), state.statsFrom);
-    return Stats.summarize(Stats.inRange(state.log, range), wordsById());
+    return Stats.summarize(Stats.inRange(state.log, range), itemsById());
   }
 
   function report(period) {
-    return Stats.buildReport(state.log, wordsById(), period, Date.now(), state.statsFrom);
+    return Stats.buildReport(state.log, itemsById(), period, Date.now(), state.statsFrom);
   }
 
   // «Начать с нуля»: только отметка даты, журнал остаётся.
@@ -335,14 +423,18 @@
     const report = { added: 0, updated: 0, errors: [] };
     const allWordIds = new Set(words().map((w) => w.id));
     const allTextIds = new Set(texts().map((t) => t.id));
+    const allGrammarIds = new Set(grammar().map((g) => g.id));
+    const kinds = {
+      grammar: { normalize: normalizeGrammar, ids: allGrammarIds, listKey: 'importedGrammar', base: state.baseGrammar },
+      text: { normalize: normalizeText, ids: allTextIds, listKey: 'importedTexts', base: state.baseTexts },
+      word: { normalize: normalizeWord, ids: allWordIds, listKey: 'importedWords', base: state.baseWords }
+    };
 
     items.forEach((raw, i) => {
       try {
-        const asText = isTextLike(raw);
-        const item = asText ? normalizeText(raw) : normalizeWord(raw);
-        const ids = asText ? allTextIds : allWordIds;
-        const listKey = asText ? 'importedTexts' : 'importedWords';
-        const base = asText ? state.baseTexts : state.baseWords;
+        const kind = kinds[isGrammarLike(raw) ? 'grammar' : isTextLike(raw) ? 'text' : 'word'];
+        const item = kind.normalize(raw);
+        const { ids, listKey, base } = kind;
 
         if (ids.has(item.id)) report.updated++; else report.added++;
         ids.add(item.id);
@@ -356,6 +448,7 @@
 
     save(KEYS.words, state.importedWords);
     save(KEYS.texts, state.importedTexts);
+    save(KEYS.grammar, state.importedGrammar);
     return report;
   }
 
@@ -366,6 +459,7 @@
       exportedAt: new Date().toISOString(),
       words: words(),
       texts: texts(),
+      grammar: grammar(),
       progress: state.progress,
       days: state.days,
       textResults: state.textResults,
@@ -406,8 +500,10 @@
   function clearImported() {
     state.importedWords = [];
     state.importedTexts = [];
+    state.importedGrammar = [];
     save(KEYS.words, []);
     save(KEYS.texts, []);
+    save(KEYS.grammar, []);
   }
 
   // Сбрасывает ящики и результаты текстов. Журнал ответов не трогает.
@@ -422,8 +518,8 @@
 
   window.Store = {
     state, MAX_BOX, SESSION_SIZES,
-    loadBase, loadBaseFromFiles, words, texts,
-    filterOptions, filteredWords, filteredTexts, setSettings,
+    loadBase, loadBaseFromFiles, words, texts, grammar, drills, isSessionSize,
+    filterOptions, filteredWords, filteredTexts, filteredDrills, setSettings,
     getProgress, record, pickSession, summary, report, startStatsFromNow,
     streak, bestStreak, saveTextResult, markActiveDay,
     importItems, exportAll, restoreProgress, clearImported, resetProgress

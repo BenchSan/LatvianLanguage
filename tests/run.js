@@ -328,6 +328,139 @@ test('Журнал: восстановление копии сливает за�
   assert.strictEqual(S.state.log[0].id, 'b', 'журнал отсортирован по времени');
 });
 
+// ---------- грамматика и «Формы» ----------
+
+const GRAMMAR = {
+  id: 'g-b3-but', block: 3, lesson: 1, title: 'būt',
+  rule: 'правило',
+  table: { headers: ['кто', 'форма'], rows: [['es', 'esmu']] },
+  examples: [{ lv: 'Es esmu.', ru: 'Я есть.' }],
+  drills: [
+    { q: 'mēs ___ (быть)', a: 'esam', alt: [] },
+    { q: 'viņš ___ (не быть)', a: 'nav', alt: ['nav!'] }
+  ]
+};
+
+test('Импорт: грамматика распознаётся отдельно от слов и текстов', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  const r = S.importItems([
+    GRAMMAR,
+    { id: 't-1', title: 'Текст', lv: 'Labdien!', glossary: [], questions: [] },
+    { id: 'w-1', lv: 'māja', ru: 'дом', block: 3, lesson: 1 }
+  ]);
+  assert.strictEqual(r.added, 3, JSON.stringify(r.errors));
+  assert.strictEqual(S.grammar().length, 1);
+  assert.strictEqual(S.texts().length, 1);
+  assert.strictEqual(S.words().length, 1);
+});
+
+test('Импорт: задания получают id «карточка#номер», повторный импорт обновляет', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  S.importItems([GRAMMAR]);
+  assert.deepStrictEqual([...S.drills()].map((d) => d.id), ['g-b3-but#1', 'g-b3-but#2']);
+  const d = S.drills()[1];
+  assert.strictEqual(d.block, 3);
+  assert.strictEqual(d.gid, 'g-b3-but');
+  const r = S.importItems([Object.assign({}, GRAMMAR, { title: 'Глагол būt' })]);
+  assert.strictEqual(r.updated, 1);
+  assert.strictEqual(S.grammar().length, 1);
+  assert.strictEqual(S.grammar()[0].title, 'Глагол būt');
+  assert.ok(S.exportAll().grammar.length === 1, 'грамматика входит в экспорт');
+});
+
+test('Импорт: задание без ответа — ошибка, карточка пропускается', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  const r = S.importItems([Object.assign({}, GRAMMAR, { drills: [{ q: 'x ___' }] })]);
+  assert.strictEqual(r.errors.length, 1);
+  assert.strictEqual(S.grammar().length, 0);
+});
+
+test('Формы: фильтр по блоку и уроку', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  S.importItems([GRAMMAR, Object.assign({}, GRAMMAR, { id: 'g-b4', block: 4, lesson: 2 })]);
+  S.setSettings({ filter: 'b3' });
+  assert.strictEqual(S.filteredDrills().length, 2);
+  S.setSettings({ filter: 'b4l2' });
+  assert.deepStrictEqual([...S.filteredDrills()].map((d) => d.gid), ['g-b4', 'g-b4']);
+  S.setSettings({ filter: 'all' });
+  assert.strictEqual(S.filteredDrills().length, 4);
+});
+
+test('Формы: проверка как во «Вводе», включая alt и диакритику', () => {
+  assert.strictEqual(U.checkLv('esam', ['esam']), 'ok');
+  assert.strictEqual(U.checkLv('Nav', ['nav', 'nav!']), 'ok');
+  assert.strictEqual(U.checkLv('neesmu', ['neēsmu']), 'almost');
+  assert.strictEqual(U.checkLv('esat', ['esam']), 'bad');
+});
+
+test('Формы: ящики Лейтнера работают и для заданий', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  S.record('g-b3-but#1', 'ok', { mode: 'forms', given: 'esam' });
+  S.record('g-b3-but#1', 'ok', { mode: 'forms', given: 'esam' });
+  assert.strictEqual(S.getProgress('g-b3-but#1').box, 3);
+  S.record('g-b3-but#1', 'bad', { mode: 'forms', given: 'esat' });
+  assert.strictEqual(S.getProgress('g-b3-but#1').box, 1);
+});
+
+// ---------- размер сессии ----------
+
+test('Размер сессии: любое целое от 1', () => {
+  const S = loadApp(['js/util.js', 'js/stats.js', 'js/store.js']).Store;
+  assert.ok(S.isSessionSize(1));
+  assert.ok(S.isSessionSize(37));
+  assert.ok(!S.isSessionSize(0));
+  assert.ok(!S.isSessionSize(2.5));
+  assert.ok(!S.isSessionSize(NaN));
+});
+
+test('Размер сессии больше пула: каждое слово ровно один раз', () => {
+  const small = pool.slice(0, 7);
+  const s = Stats.pickSession(small, 100, { rand: mulberry32(5) });
+  assert.strictEqual(s.length, 7);
+  assert.deepStrictEqual(s.map((w) => w.id).sort(), small.map((w) => w.id).sort());
+});
+
+// ---------- «Формы» в статистике и отчёте ----------
+
+const ITEMS = new Map(words);
+ITEMS.set('g#1', { id: 'g#1', lv: 'esam', ru: 'mēs ___ (быть)', block: 3, lesson: 1, kind: 'drill' });
+ITEMS.set('g#2', { id: 'g#2', lv: 'nav', ru: 'viņš ___ (не быть)', block: 3, lesson: 1, kind: 'drill' });
+
+const FORMS_LOG = LOG.concat([
+  e('g#1', 'forms', 'esat', 'bad', at(0, 17)),
+  e('g#1', 'forms', 'esat', 'bad', at(0, 18)),
+  e('g#1', 'forms', 'esam', 'ok', at(0, 19)),
+  e('g#2', 'forms', 'nāv', 'almost', at(0, 19)),
+  e('g#2', 'forms', 'nav', 'ok', at(9))
+]);
+
+test('Сводка: «Формы» отдельно, задания не попадают в трудные слова', () => {
+  const s = Stats.summarize(Stats.inRange(FORMS_LOG, Stats.periodRange('week', NOW)), ITEMS);
+  assert.strictEqual(s.forms.total, 4);
+  assert.strictEqual(s.forms.ok, 1);
+  assert.strictEqual(s.forms.diacritic, 1);
+  assert.strictEqual(s.forms.hard[0].id, 'g#1');
+  assert.strictEqual(s.forms.hard[0].typical.value, 'esat');
+  assert.ok(!s.hard.some((h) => h.id.startsWith('g#')));
+  assert.strictEqual(s.inputErrors.diacritic, 4, '«почти» в «Формах» не смешивается с «Вводом»');
+  assert.strictEqual(s.byMode.forms.total, 4);
+});
+
+test('Отчёт: строка «Формы» с точностью и трудными заданиями', () => {
+  const r = Stats.buildReport(FORMS_LOG, ITEMS, 'week', NOW, null);
+  const has = (s) => assert.ok(r.includes(s), `нет строки «${s}» в отчёте:\n${r}`);
+  has('Формы: 25% (4 отв.; верно 1, почти 1, неверно 2), только диакритика: 1');
+  has('Трудные задания:');
+  has('1. mēs ___ (быть) → esam — ошибок 2 из 3; обычно ввожу: «esat» (2×)');
+  has('· Формы 25% (4)');
+  has('- Формы: 25% (было 100%)');
+});
+
+test('Отчёт: без ответов в «Формах» строки нет, старые отчёты не меняются', () => {
+  const r = Stats.buildReport(LOG, ITEMS, 'week', NOW, null);
+  assert.ok(!r.includes('Формы'), r);
+});
+
 // ---------- запуск ----------
 
 let failed = 0;

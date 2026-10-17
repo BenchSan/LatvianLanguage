@@ -14,7 +14,8 @@
   const MODES = {
     input: { title: 'Ввод', sub: 'русский → пишу по-латышски' },
     reading: { title: 'Чтение', sub: 'латышский → как читается' },
-    cards: { title: 'Карточки', sub: 'знал / не знал' }
+    cards: { title: 'Карточки', sub: 'знал / не знал' },
+    forms: { title: 'Формы', sub: 'грамматика: вписываю форму' }
   };
 
   const VERDICT = {
@@ -55,8 +56,39 @@
     return parts.join('');
   }
 
+  // Задание из грамматики в виде «слова», чтобы сессия, итог и голос работали одинаково.
+  function drillItem(d) {
+    return {
+      id: d.id, lv: d.a, lv_alt: d.alt, ru: d.q, ru_alt: [], read: '', note: '',
+      block: d.block, lesson: d.lesson, gid: d.gid, title: d.title, kind: 'drill'
+    };
+  }
+
   function findWord(id) {
-    return Store.words().find((w) => w.id === id);
+    const w = Store.words().find((x) => x.id === id);
+    if (w) return w;
+    const d = Store.drills().find((x) => x.id === id);
+    return d ? drillItem(d) : null;
+  }
+
+  function blockLessonLabel(block, lesson) {
+    if (block == null) return 'Без блока';
+    return lesson == null ? `Блок ${block}` : `Блок ${block} · урок ${lesson}`;
+  }
+
+  // Группирует по «блок · урок» в порядке номеров (без блока — в конце).
+  function groupByLesson(items) {
+    const num = (x) => (x == null ? Infinity : x);
+    const sorted = items.slice().sort((a, b) =>
+      num(a.block) - num(b.block) || num(a.lesson) - num(b.lesson));
+    const groups = [];
+    sorted.forEach((x) => {
+      const label = blockLessonLabel(x.block, x.lesson);
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) last.items.push(x);
+      else groups.push({ label, items: [x] });
+    });
+    return groups;
   }
 
   function emptyState(text) {
@@ -76,10 +108,13 @@
     if (!opts.some((o) => o.value === st.settings.filter)) Store.setSettings({ filter: 'all' });
     const pool = Store.filteredWords();
     const textsCount = Store.filteredTexts().length;
+    const drillsCount = Store.filteredDrills().length;
+    const size = st.settings.size;
+    const custom = !Store.SESSION_SIZES.includes(size);
 
     const banner = st.baseError ? `
       <div class="banner">
-        <p><b>Не удалось загрузить data/words.json и data/texts.json.</b></p>
+        <p><b>Не удалось загрузить файлы из папки data.</b></p>
         <p>Если index.html открыт двойным кликом, браузер не даёт читать файлы с диска.
         Выбери их вручную (на эту сессию) или запусти локальный сервер / открой версию на GitHub Pages.</p>
         <label class="btn small file-btn">Выбрать файлы из папки data
@@ -95,14 +130,19 @@
         <select id="filter">
           ${opts.map((o) => `<option value="${o.value}" ${o.value === st.settings.filter ? 'selected' : ''}>${o.sub ? ' ' : ''}${esc(o.label)}</option>`).join('')}
         </select>
-        <div class="muted">${pool.length} слов · ${textsCount} текстов</div>
+        <div class="muted">${pool.length} слов · ${drillsCount} заданий на формы · ${textsCount} текстов</div>
       </div>
 
       <div class="field">
-        <span class="label">Слов за сессию</span>
-        <div class="seg" role="group">
-          ${Store.SESSION_SIZES.map((n) => `<button type="button" data-size="${n}" class="${n === st.settings.size ? 'active' : ''}">${n}</button>`).join('')}
+        <span class="label">Карточек за сессию</span>
+        <div class="size-row">
+          <div class="seg" role="group">
+            ${Store.SESSION_SIZES.map((n) => `<button type="button" data-size="${n}" class="${n === size ? 'active' : ''}">${n}</button>`).join('')}
+          </div>
+          <input id="size-custom" class="size-input${custom ? ' active' : ''}" type="number" inputmode="numeric"
+            min="1" max="999" step="1" placeholder="своё" value="${custom ? size : ''}" aria-label="Своё число карточек">
         </div>
+        <div class="muted small-text">Если карточек в блоке меньше — пройдём все, каждую по разу.</div>
       </div>
 
       <div class="tiles">
@@ -115,9 +155,14 @@
           <span class="tile-title">Тексты</span>
           <span class="tile-sub">читаю и отвечаю на вопросы</span>
         </a>
+        <a class="tile" href="#/grammar">
+          <span class="tile-title">Грамматика</span>
+          <span class="tile-sub">правила, таблицы, примеры</span>
+        </a>
       </div>
 
-      <div class="tiles secondary">
+      <div class="tiles secondary three">
+        <a class="tile" href="#/dict"><span class="tile-title">Словарь</span></a>
         <a class="tile" href="#/stats"><span class="tile-title">Статистика</span></a>
         <a class="tile" href="#/import"><span class="tile-title">Импорт</span></a>
       </div>`;
@@ -130,6 +175,17 @@
       Store.setSettings({ size: Number(b.dataset.size) });
       renderHome();
     }));
+    // Своё число сохраняем на лету, без перерисовки — чтобы не терять фокус и клавиатуру.
+    const sizeInput = $app.querySelector('#size-custom');
+    sizeInput.addEventListener('input', () => {
+      const n = Number(sizeInput.value);
+      const ok = Store.isSessionSize(n);
+      sizeInput.classList.toggle('invalid', sizeInput.value !== '' && !ok);
+      if (!ok) return;
+      Store.setSettings({ size: n });
+      sizeInput.classList.add('active');
+      $app.querySelectorAll('[data-size]').forEach((b) => b.classList.remove('active'));
+    });
     const files = $app.querySelector('#base-files');
     if (files) files.addEventListener('change', loadBaseFiles);
   }
@@ -147,15 +203,18 @@
   // ---------- сессия ----------
 
   function startSession(mode, items) {
-    let pool = Store.filteredWords();
+    let pool = mode === 'forms' ? Store.filteredDrills().map(drillItem) : Store.filteredWords();
     if (mode === 'reading') pool = pool.filter((w) => w.read);
     const list = items || Store.pickSession(pool, Store.state.settings.size);
 
     setHeader(MODES[mode].title, true);
     if (!list.length) {
-      $app.innerHTML = emptyState(mode === 'reading'
-        ? 'В выбранном блоке нет слов с полем «read».'
-        : 'В выбранном блоке нет слов. Выбери другой фильтр или добавь слова через Импорт.');
+      const empty = {
+        reading: 'В выбранном блоке нет слов с полем «read».',
+        forms: 'В выбранном блоке нет заданий на формы. Добавь карточки в data/grammar.json или через Импорт.'
+      };
+      $app.innerHTML = emptyState(empty[mode] ||
+        'В выбранном блоке нет слов. Выбери другой фильтр или добавь слова через Импорт.');
       return;
     }
     session = { mode, items: U.shuffle(list), i: 0, results: [], answered: false };
@@ -177,7 +236,7 @@
     session.answered = false;
     session.shownAt = Date.now();
     const word = session.items[session.i];
-    if (session.mode === 'input') renderInputStep(word);
+    if (session.mode === 'input' || session.mode === 'forms') renderInputStep(word);
     else if (session.mode === 'reading') renderReadingStep(word);
     else renderCardStep(word);
   }
@@ -237,12 +296,14 @@
     });
   }
 
+  // «Ввод» и «Формы»: одинаковая проверка, разные задание и подсказки.
   function renderInputStep(word) {
+    const isForm = word.kind === 'drill';
     $app.innerHTML = `
       ${progressBar()}
       <div class="card">
-        <div class="prompt-label">Как по-латышски?</div>
-        <div class="prompt">${esc(word.ru)}</div>
+        <div class="prompt-label">${isForm ? esc(word.title) : 'Как по-латышски?'}</div>
+        <div class="prompt${isForm ? ' drill' : ''}"${isForm ? ' lang="lv"' : ''}>${esc(word.ru)}</div>
       </div>
       <form id="answer-form" autocomplete="off">
         <input id="answer" class="answer" type="text" lang="lv" placeholder="Пиши по-латышски"
@@ -271,7 +332,9 @@
         <div class="feedback ${result}">
           <div class="verdict">${VERDICT[result]}${result === 'almost' ? ' Проверь диакритику.' : ''}</div>
           ${correctLine}
-          ${wordDetails(word, { read: true })}
+          ${isForm
+            ? `<div class="muted">Правило: <a href="#/grammar/${encodeURIComponent(word.gid)}">${esc(word.title)}</a></div>`
+            : wordDetails(word, { read: true })}
           ${boxNote(p)}
         </div>
         ${speechBar(word)}`;
@@ -385,7 +448,9 @@
 
     const row = (x) => `
       <li class="${x.result}">
-        <span class="lv" lang="lv">${esc(x.word.lv)}</span> — ${esc(x.word.ru)}
+        ${x.word.kind === 'drill'
+          ? `<span lang="lv">${esc(x.word.ru)}</span> → <span class="lv" lang="lv">${esc(x.word.lv)}</span>`
+          : `<span class="lv" lang="lv">${esc(x.word.lv)}</span> — ${esc(x.word.ru)}`}
         ${mode === 'reading' ? `<div class="muted">[${esc(x.word.read)}]</div>` : ''}
         ${x.answer != null ? `<div class="muted">твой ответ: ${x.answer.trim() ? esc(x.answer) : '—'}</div>` : ''}
       </li>`;
@@ -580,6 +645,135 @@
     });
   }
 
+  // ---------- грамматика ----------
+
+  function renderGrammarList() {
+    setHeader('Грамматика', true);
+    const list = Store.grammar();
+    if (!list.length) {
+      $app.innerHTML = emptyState('Карточек пока нет. Добавь их в data/grammar.json или через Импорт.');
+      return;
+    }
+    $app.innerHTML = groupByLesson(list).map((g) => `
+      <h3>${esc(g.label)}</h3>
+      <div class="list">
+        ${g.items.map((c) => `
+          <a class="list-item" href="#/grammar/${encodeURIComponent(c.id)}">
+            <span class="tile-title">${esc(c.title)}</span>
+            ${c.drills.length ? `<span class="muted">${c.drills.length} заданий на формы</span>` : ''}
+          </a>`).join('')}
+      </div>`).join('');
+  }
+
+  function grammarTable(t) {
+    return `
+      <div class="table-wrap">
+        <table class="gtable" lang="lv">
+          ${t.headers.length ? `<thead><tr>${t.headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>` : ''}
+          <tbody>
+            ${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderGrammarCard(id) {
+    setHeader('Грамматика', true);
+    const c = Store.grammar().find((x) => x.id === id);
+    if (!c) {
+      $app.innerHTML = emptyState('Карточка не найдена.');
+      return;
+    }
+    $app.innerHTML = `
+      <div class="muted">${esc(blockLessonLabel(c.block, c.lesson))}</div>
+      <h2 class="text-title">${esc(c.title)}</h2>
+      ${c.rule ? `<div class="rule">${esc(c.rule)}</div>` : ''}
+      ${c.table ? grammarTable(c.table) : ''}
+      ${c.examples.length ? `
+        <h3>Примеры</h3>
+        <ul class="examples">
+          ${c.examples.map((x) => `
+            <li>
+              <div class="ex-lv" lang="lv">${esc(x.lv)}</div>
+              ${x.ru ? `<div class="muted">${esc(x.ru)}</div>` : ''}
+              <button type="button" class="btn small tts-btn" data-say="${esc(x.lv)}">🔊 Послушать</button>
+            </li>`).join('')}
+        </ul>` : ''}
+      ${c.drills.length ? `
+        <div class="actions column">
+          <button type="button" class="btn primary" id="drill-card">Тренировать формы (${c.drills.length})</button>
+        </div>` : ''}`;
+
+    const btn = $app.querySelector('#drill-card');
+    if (btn) btn.addEventListener('click', () => {
+      const items = Store.drills().filter((d) => d.gid === c.id).map(drillItem);
+      startSession('forms', Store.pickSession(items, Store.state.settings.size));
+    });
+  }
+
+  // ---------- словарь ----------
+
+  function searchKey(s) {
+    return U.stripDiacritics(U.cleanLv(s)).replace(/ё/g, 'е');
+  }
+
+  function dictRow(w) {
+    return `
+      <li class="dict-row">
+        <div class="dict-head">
+          <span class="lv" lang="lv">${esc([w.lv].concat(w.lv_alt).join(' / '))}</span>
+          <button type="button" class="btn small tts-btn" data-say="${esc(w.lv)}" aria-label="Послушать">🔊</button>
+        </div>
+        <div>${esc([w.ru].concat(w.ru_alt).join(', '))}</div>
+        ${w.read ? `<div class="detail-read">[${esc(w.read)}]</div>` : ''}
+        ${w.note ? `<div class="note">💡 ${esc(w.note)}</div>` : ''}
+      </li>`;
+  }
+
+  function renderDict() {
+    setHeader('Словарь', true);
+    const all = Store.words();
+    const blocks = Array.from(new Set(all.map((w) => w.block).filter((b) => b != null))).sort((a, b) => a - b);
+    let block = Store.state.settings.dictBlock;
+    if (block !== 'all' && !blocks.includes(Number(block))) block = 'all';
+
+    $app.innerHTML = `
+      <div class="dict-controls">
+        <select id="dict-block" aria-label="Блок">
+          <option value="all">Все блоки</option>
+          ${blocks.map((b) => `<option value="${b}" ${String(b) === String(block) ? 'selected' : ''}>Блок ${b}</option>`).join('')}
+        </select>
+        <input id="dict-search" class="answer" type="search" placeholder="Поиск: lv или ru"
+          autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div id="dict-list"></div>`;
+
+    const $list = $app.querySelector('#dict-list');
+    const $search = $app.querySelector('#dict-search');
+
+    const draw = () => {
+      const q = searchKey($search.value);
+      const items = all.filter((w) => {
+        if (block !== 'all' && w.block !== Number(block)) return false;
+        if (!q) return true;
+        return [w.lv, w.ru, w.read].concat(w.lv_alt, w.ru_alt).some((x) => searchKey(x).includes(q));
+      });
+      $list.innerHTML = items.length
+        ? `<p class="muted">${items.length} слов</p>` + groupByLesson(items).map((g) => `
+            <h3>${esc(g.label)}</h3>
+            <ul class="dict">${g.items.map(dictRow).join('')}</ul>`).join('')
+        : '<p class="muted center">Ничего не нашлось.</p>';
+    };
+
+    $app.querySelector('#dict-block').addEventListener('change', (e) => {
+      block = e.target.value;
+      Store.setSettings({ dictBlock: block });
+      draw();
+    });
+    $search.addEventListener('input', draw);
+    draw();
+  }
+
   // ---------- статистика ----------
 
   const PERIOD_TABS = [
@@ -681,6 +875,19 @@
             <div class="feedback bad"><b>${ie.other}</b> — другие ошибки</div>
             <div class="feedback bad"><b>${ie.skipped}</b> — «не знаю»</div>
           </div>` : '<p class="muted">Ошибок в режиме «Ввод» нет.</p>'}
+
+        ${s.forms.total ? `
+          <h3>Формы</h3>
+          ${accRow('точность', s.forms)}
+          <p class="muted">верно ${s.forms.ok} · только диакритика ${s.forms.diacritic} · неверно ${s.forms.bad}</p>
+          ${s.forms.hard.length ? `
+            <ul class="mistakes">
+              ${s.forms.hard.map((h) => `
+                <li class="${h.bad ? 'bad' : 'almost'}">
+                  ${h.word ? `<span lang="lv">${esc(h.word.ru)}</span> → <span class="lv" lang="lv">${esc(h.word.lv)}</span>` : esc(h.id)}
+                  <div class="muted">ошибок ${h.errors} из ${h.total}${h.typical ? ` · обычно: «${esc(h.typical.value)}»` : ''}</div>
+                </li>`).join('')}
+            </ul>` : ''}` : ''}
       ` : '<p class="muted">За этот период ответов нет.</p>'}
 
       <div class="actions column">
@@ -729,15 +936,19 @@
   {"id":"b2l2-maja","lv":"māja","ru":"дом","read":"МААя","block":2,"lesson":2}
 ]`;
 
+  function importCounts() {
+    const st = Store.state;
+    return `Из файлов: ${st.baseWords.length} слов, ${st.baseTexts.length} текстов, ${st.baseGrammar.length} карточек грамматики. ` +
+      `Импортировано: ${st.importedWords.length} слов, ${st.importedTexts.length} текстов, ${st.importedGrammar.length} карточек.`;
+  }
+
   function renderImport() {
     setHeader('Импорт', true);
-    const st = Store.state;
     $app.innerHTML = `
-      <p class="muted" id="import-counts">Из файлов: ${st.baseWords.length} слов, ${st.baseTexts.length} текстов.
-      Импортировано: ${st.importedWords.length} слов, ${st.importedTexts.length} текстов.</p>
+      <p class="muted" id="import-counts">${importCounts()}</p>
 
       <div class="field">
-        <label for="import-src">Вставь JSON — массив слов или текстов (можно вперемешку)</label>
+        <label for="import-src">Вставь JSON — массив слов, текстов или карточек грамматики (можно вперемешку)</label>
         <textarea id="import-src" rows="10" spellcheck="false" placeholder='${esc(IMPORT_EXAMPLE)}'></textarea>
         <div class="muted small-text">Если id уже есть — запись обновится, иначе добавится.
         Комментарии // и висячие запятые можно. Сюда же можно вставить резервную копию.</div>
@@ -777,9 +988,10 @@
       let backup = null;
       if (Array.isArray(data)) {
         items = data;
-      } else if (data && typeof data === 'object' && (Array.isArray(data.words) || Array.isArray(data.texts))) {
+      } else if (data && typeof data === 'object' &&
+        (Array.isArray(data.words) || Array.isArray(data.texts) || Array.isArray(data.grammar))) {
         backup = data;
-        items = (data.words || []).concat(data.texts || []);
+        items = (data.words || []).concat(data.texts || [], data.grammar || []);
       } else if (data && typeof data === 'object') {
         items = [data];
       } else {
@@ -801,9 +1013,7 @@
           ${report.errors.length ? `<div>Пропущено (${report.errors.length}):</div><ul>${report.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
         </div>`;
       if (!report.errors.length) src.value = '';
-      $app.querySelector('#import-counts').textContent =
-        `Из файлов: ${st.baseWords.length} слов, ${st.baseTexts.length} текстов. ` +
-        `Импортировано: ${st.importedWords.length} слов, ${st.importedTexts.length} текстов.`;
+      $app.querySelector('#import-counts').textContent = importCounts();
     });
 
     $app.querySelector('#export').addEventListener('click', () => {
@@ -827,7 +1037,7 @@
     });
 
     $app.querySelector('#clear-imported').addEventListener('click', () => {
-      if (!confirm('Удалить все импортированные слова и тексты? Файлы из data/ и прогресс не тронутся.')) return;
+      if (!confirm('Удалить все импортированные слова, тексты и карточки грамматики? Файлы из data/ и прогресс не тронутся.')) return;
       Store.clearImported();
       renderImport();
     });
@@ -888,14 +1098,21 @@
     if (MODES[name]) startSession(name);
     else if (name === 'texts') renderTextList();
     else if (name === 'text') renderText(decodeURIComponent(arg || ''));
+    else if (name === 'grammar') {
+      if (arg) renderGrammarCard(decodeURIComponent(arg));
+      else renderGrammarList();
+    }
+    else if (name === 'dict') renderDict();
     else if (name === 'stats') renderStats();
     else if (name === 'import') renderImport();
     else renderHome();
   }
 
   $back.addEventListener('click', () => {
-    const name = location.hash.replace(/^#\/?/, '').split('/')[0];
-    location.hash = name === 'text' ? '#/texts' : '#/';
+    const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
+    if (name === 'text') location.hash = '#/texts';
+    else if (name === 'grammar' && arg) location.hash = '#/grammar';
+    else location.hash = '#/';
   });
 
   window.addEventListener('hashchange', route);

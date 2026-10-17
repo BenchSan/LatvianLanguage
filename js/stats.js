@@ -15,7 +15,7 @@
   const RECENT_WINDOW = 80;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  const MODE_NAMES = { input: 'Ввод', reading: 'Чтение', cards: 'Карточки' };
+  const MODE_NAMES = { input: 'Ввод', reading: 'Чтение', cards: 'Карточки', forms: 'Формы' };
   const PERIODS = {
     today: { label: 'сегодня', days: 1, prev: 'вчера' },
     week: { label: 'последние 7 дней', days: 7, prev: 'предыдущие 7 дней' },
@@ -137,6 +137,8 @@
     const byLesson = new Map();
     const byBlock = new Map();
     const byWord = new Map();
+    const byDrill = new Map();
+    const forms = Object.assign(counter(), { diacritic: 0 });
     const days = new Set();
     const inputErrors = { diacritic: 0, other: 0, skipped: 0 };
     let secSum = 0;
@@ -163,8 +165,15 @@
       }
       count(byBlock.get(lk.block), e.result);
 
-      if (!byWord.has(e.id)) byWord.set(e.id, Object.assign(counter(), { id: e.id, word: w, wrong: [] }));
-      const bw = byWord.get(e.id);
+      // Задания «Форм» считаются отдельно, чтобы не смешивать их с трудными словами.
+      const isForm = e.mode === 'forms';
+      const target = isForm ? byDrill : byWord;
+      if (isForm) {
+        count(forms, e.result);
+        if (e.result === 'almost') forms.diacritic++;
+      }
+      if (!target.has(e.id)) target.set(e.id, Object.assign(counter(), { id: e.id, word: w, wrong: [] }));
+      const bw = target.get(e.id);
       count(bw, e.result);
       if (e.result !== 'ok' && e.given && e.given.trim()) bw.wrong.push(e.given.trim());
 
@@ -179,11 +188,14 @@
     const lessons = Array.from(byLesson.values())
       .sort((a, b) => accuracy(a) - accuracy(b) || b.total - a.total);
 
-    const hard = Array.from(byWord.values())
+    const hardest = (map, n) => Array.from(map.values())
       .map((x) => Object.assign(x, { errors: x.almost + x.bad, typical: mostFrequent(x.wrong) }))
       .filter((x) => x.errors > 0)
       .sort((a, b) => b.errors - a.errors || (b.errors / b.total) - (a.errors / a.total))
-      .slice(0, 10);
+      .slice(0, n);
+    const hard = hardest(byWord, 10);
+    forms.accuracy = accuracy(forms);
+    forms.hard = hardest(byDrill, 5);
 
     return {
       ...all,
@@ -194,6 +206,7 @@
       lessons,
       blocks: Array.from(byBlock.values()).sort((a, b) => byNumber(a.block, b.block)),
       hard,
+      forms,
       inputErrors
     };
   }
@@ -220,7 +233,10 @@
     const lines = [];
 
     const firstTs = log.length ? Math.max(range.start, log[0].ts) : range.start;
-    const span = p.days ? `${fmtDate(range.start)}–${fmtDate(now)}` : (log.length ? `с ${fmtDate(firstTs)}` : '');
+    const fromLabel = fmtDate(range.start);
+    const span = p.days
+      ? (fromLabel === fmtDate(now) ? fromLabel : `${fromLabel}–${fmtDate(now)}`)
+      : (log.length ? `с ${fmtDate(firstTs)}` : '');
     lines.push('Латышский тренажёр — отчёт');
     lines.push(`Период: ${p.label}${span ? ` (${span})` : ''}`);
     if (from) lines.push(`Статистика считается с ${fmtDate(from)}`);
@@ -261,6 +277,19 @@
       lines.push('- нет');
     }
 
+    const f = cur.forms;
+    if (f.total) {
+      lines.push('', `Формы: ${pct(f.accuracy)} (${f.total} отв.; верно ${f.ok}, почти ${f.almost}, неверно ${f.bad}), только диакритика: ${f.diacritic}`);
+      if (f.hard.length) {
+        lines.push('Трудные задания:');
+        f.hard.forEach((h, i) => {
+          let line = `${i + 1}. ${h.word ? `${h.word.ru} → ${h.word.lv}` : `${h.id} (удалено)`} — ошибок ${h.errors} из ${h.total}`;
+          if (h.typical) line += `; обычно ввожу: «${h.typical.value}»${h.typical.n > 1 ? ` (${h.typical.n}×)` : ''}`;
+          lines.push(line);
+        });
+      }
+    }
+
     if (p.prev) {
       const prevEntries = range.prev ? inRange(log, range.prev) : [];
       lines.push('', `Сравнение с периодом «${p.prev}»:`);
@@ -273,6 +302,9 @@
         lines.push(`- точность: ${pct(cur.accuracy)} (было ${pct(prev.accuracy)}, ${diff >= 0 ? '+' : ''}${diff} п.п.)`);
         lines.push(`- дней с занятиями: ${cur.days} (было ${prev.days})`);
         lines.push(`- ошибок из-за диакритики: ${ie.diacritic} (было ${prev.inputErrors.diacritic})`);
+        if (f.total || prev.forms.total) {
+          lines.push(`- Формы: ${f.total ? pct(f.accuracy) : '—'} (было ${prev.forms.total ? pct(prev.forms.accuracy) : '—'})`);
+        }
       }
     }
 

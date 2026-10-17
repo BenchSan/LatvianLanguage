@@ -1,0 +1,33 @@
+[
+  {
+    "id": "g-b3-but",
+    "block": 3,
+    "lesson": 1,
+    "title": "Глагол būt - быть",
+    "rule": "В латышском «быть» в настоящем времени не выпадает, как в русском: «Я украинец» = Es esmu ukrainis.\nУ viņš / viņa / viņi / viņas одна форма - ir.\nОтрицание: ne- слитно (neesmu), но для 3-го лица особое слово - nav.",
+    "table": {
+      "headers": ["кто", "форма", "с отрицанием"],
+      "rows": [
+        ["es", "esmu", "neesmu"],
+        ["tu", "esi", "neesi"],
+        ["viņš, viņa", "ir", "nav"],
+        ["mēs", "esam", "neesam"],
+        ["jūs", "esat", "neesat"],
+        ["viņi, viņas", "ir", "nav"]
+      ]
+    },
+    "examples": [
+      { "lv": "Es esmu ukrainis.", "ru": "Я украинец." },
+      { "lv": "Mēs esam Rīgā.", "ru": "Мы в Риге." },
+      { "lv": "Viņa nav mājās.", "ru": "Её нет дома." }
+    ],
+    "drills": [
+      { "q": "mēs ___ (быть)", "a": "esam", "alt": [] },
+      { "q": "viņš ___ (не быть)", "a": "nav", "alt": [] },
+      { "q": "es ___ (быть)", "a": "esmu", "alt": [] },
+      { "q": "tu ___ (не быть)", "a": "neesi", "alt": [] },
+      { "q": "jūs ___ (быть)", "a": "esat", "alt": [] },
+      { "q": "viņas ___ (быть)", "a": "ir", "alt": [] }
+    ]
+  }
+]
